@@ -1,0 +1,9 @@
+ID: 1212
+NAME: wp
+E-MAIL: wp@wp.pl
+PASSWORD: password
+PHONE: 123
+CREATED: 2025-06-03
+UPDATED: 2025-06-03
+PLIK: [brak zawartości]
+----------------------------------------
