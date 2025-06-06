@@ -4,6 +4,38 @@ import pandas as pd
 import csv
 import os
 
+# Funkcja wyższego rzędu do tworzenia message handlers
+def create_message_handler(default_title="Informacja"):
+    """Funkcja wyższego rzędu tworząca różne handlery wiadomości"""
+    def message_handler(message_type="info"):
+        def show_message(message):
+            if message_type == "info":
+                messagebox.showinfo(default_title, message)
+            elif message_type == "warning":
+                messagebox.showwarning(default_title, message)
+            elif message_type == "error":
+                messagebox.showerror(default_title, message)
+            elif message_type == "question":
+                return messagebox.askyesno(default_title, message)
+        return show_message
+    return message_handler
+
+# Tworzenie różnych message handlers dla różnych sekcji aplikacji
+login_messages = create_message_handler("Logowanie")
+show_login_error = login_messages("error")
+show_login_warning = login_messages("warning")
+show_login_success = login_messages("info")
+
+cart_messages = create_message_handler("Koszyk")
+show_cart_info = cart_messages("info")
+show_cart_warning = cart_messages("warning")
+show_cart_error = cart_messages("error")
+ask_cart_question = cart_messages("question")
+
+shop_messages = create_message_handler("Sklep")
+show_shop_error = shop_messages("error")
+show_shop_info = shop_messages("info")
+
 def validate_login(email, password):
     """Funkcja sprawdzająca dane logowania w pliku customer.csv"""
     file_path = os.path.join("data", "customer.csv")
@@ -16,10 +48,10 @@ def validate_login(email, password):
                     return True, row['NAME'] 
         return False, None
     except FileNotFoundError:
-        messagebox.showerror("Błąd", "Plik z danymi klientów nie został znaleziony!")
+        show_login_error("Plik z danymi klientów nie został znaleziony!")
         return False, None
     except Exception as e:
-        messagebox.showerror("Błąd", f"Wystąpił problem przy sprawdzaniu danych: {str(e)}")
+        show_login_error(f"Wystąpił problem przy sprawdzaniu danych: {str(e)}")
         return False, None
 
 def login_window(callback):
@@ -61,17 +93,17 @@ def login_window(callback):
         password = password_entry.get().strip()
         
         if not email or not password:
-            messagebox.showwarning("Ostrzeżenie", "Wprowadź email i hasło!")
+            show_login_warning("Wprowadź email i hasło!")
             return
         
         is_valid, user_name = validate_login(email, password)
         
         if is_valid:
-            messagebox.showinfo("Sukces", f"Witaj {user_name}!")
+            show_login_success(f"Witaj {user_name}!")
             login_root.destroy()  
             callback(user_name)  
         else:
-            messagebox.showerror("Błąd", "Nieprawidłowy email lub hasło!")
+            show_login_error("Nieprawidłowy email lub hasło!")
             password_entry.delete(0, tk.END)  
     
     login_button = tk.Button(
@@ -207,13 +239,13 @@ def main_shop_window(user_name="Użytkowniku"):
         quantity_str = quantity_entry.get().strip()
         
         if not quantity_str:
-            messagebox.showwarning("Ostrzeżenie", "Podaj ilość produktu!")
+            show_cart_warning("Podaj ilość produktu!")
             return
         
         is_valid, result = validate_quantity(quantity_str)
         
         if not is_valid:
-            messagebox.showerror("Błąd", result)
+            show_cart_error(result)
             return
         
         quantity = result
@@ -229,18 +261,18 @@ def main_shop_window(user_name="Użytkowniku"):
         # Aktualizuj wyświetlanie koszyka
         update_cart_display()
         
-        messagebox.showinfo("Sukces", f"Dodano {quantity} szt. '{product_name}' do koszyka!")
+        show_cart_info(f"Dodano {quantity} szt. '{product_name}' do koszyka!")
     
     def clear_cart():
         """Funkcja czyszcząca koszyk"""
         if cart:
-            result = messagebox.askyesno("Potwierdzenie", "Czy na pewno chcesz wyczyścić koszyk?")
+            result = ask_cart_question("Czy na pewno chcesz wyczyścić koszyk?")
             if result:
                 cart.clear()
                 update_cart_display()
-                messagebox.showinfo("Informacja", "Koszyk został wyczyszczony!")
+                show_cart_info("Koszyk został wyczyszczony!")
         else:
-            messagebox.showinfo("Informacja", "Koszyk jest już pusty!")
+            show_cart_info("Koszyk jest już pusty!")
     
     def create_product_widget(parent, product_id, product_name, price, available):
         """Tworzy widget produktu"""
@@ -337,7 +369,7 @@ def main_shop_window(user_name="Użytkowniku"):
                     continue
     
     except Exception as e:
-        messagebox.showerror("Błąd", f"Wystąpił problem przy wczytywaniu pliku: {str(e)}")
+        show_shop_error(f"Wystąpił problem przy wczytywaniu pliku: {str(e)}")
     
     # Frame na przyciski na dole
     button_frame = tk.Frame(root)
@@ -367,5 +399,3 @@ def start_gui():
     login_window(main_shop_window)
 
 
-if __name__ == "__main__":
-    start_gui()
