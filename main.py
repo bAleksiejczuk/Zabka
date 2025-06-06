@@ -21,11 +21,11 @@ def show_users():
     users_window.title("Lista Użytkowników")
     users_window.geometry("500x500")
     
-    # Główna ramka
+  
     main_frame = tk.Frame(users_window)
     main_frame.pack(fill="both", expand=True, padx=10, pady=10)
     
-    # Nagłówek
+  
     header_label = tk.Label(main_frame, text="Lista Wszystkich Użytkowników", 
                            font=("Arial", 16, "bold"))
     header_label.pack(pady=(0, 15))
@@ -116,7 +116,7 @@ def show_users():
                              font=("Arial", 12), fg="red")
         error_label.pack(pady=20)
     
-    # Przycisk zamknij
+
     close_button = tk.Button(main_frame, text="Zamknij", command=users_window.destroy,
                            bg="#757575", fg="white", font=("Arial", 10))
     close_button.pack(pady=(10, 0))
@@ -131,23 +131,23 @@ def load_products(products_scrollable_frame, canvas):
         df = pd.read_excel(file_path, header=None, skiprows=1)
         for index, row in df.iterrows():
             data = str(row[0]).split(',')
-            if len(data) >= 3:
+            if len(data) >= 4:  
                 product_id = data[0]
                 product_name = data[1]
-                product_available = data[2]
+                product_price = data[2]  
+                product_available = data[3]  
 
                 product_frame = tk.Frame(products_scrollable_frame, bd=1, relief=tk.RAISED)
                 product_frame.pack(fill="x", padx=5, pady=5)
 
                 product_label = tk.Label(
                     product_frame,
-                    text=f"{product_name} - Dostępnych: {product_available}",
+                    text=f"{product_name} - Dostępnych: {product_available} - Cena: {product_price} zł",
                     font=("Arial", 12),
                     padx=10
                 )
                 product_label.pack(side="left", pady=10)
 
-                # Dodaj do listy by potem usunąć
                 product_widgets.append(product_frame)
 
     except Exception as e:
@@ -155,7 +155,6 @@ def load_products(products_scrollable_frame, canvas):
         error_label.pack()
         product_widgets.append(error_label)
     
-    # Zaktualizuj scroll region
     products_scrollable_frame.update_idletasks()
     canvas.configure(scrollregion=canvas.bbox("all"))
 
@@ -170,7 +169,7 @@ def configure_canvas_scroll(event, canvas):
 def main():
     root = tk.Tk()
     root.title("Sklep Żabka")
-    root.geometry("800x600")
+    root.geometry("800x700")
     
     # Rejestracja funkcji walidacji
     vcmd = (root.register(validate_length), '%P')
@@ -179,11 +178,11 @@ def main():
     main_container = tk.Frame(root)
     main_container.pack(fill="both", expand=True, padx=10, pady=10)
 
-    # === Produkty z scrollbarem (lewo) ===
+   
     products_container = tk.Frame(main_container)
     products_container.pack(side="left", fill="both", expand=True)
 
-    # Nagłówek dla produktów
+   
     products_header = tk.Label(products_container, text="Lista Produktów", font=("Arial", 14, "bold"))
     products_header.pack(pady=(0, 10))
 
@@ -191,7 +190,7 @@ def main():
     canvas_frame = tk.Frame(products_container)
     canvas_frame.pack(fill="both", expand=True)
 
-    # Canvas z scrollbarem - usunięto białe tło
+    # Canvas z scrollbarem
     canvas = tk.Canvas(canvas_frame, highlightthickness=0)
     scrollbar = tk.Scrollbar(canvas_frame, orient="vertical", command=canvas.yview)
     products_scrollable_frame = tk.Frame(canvas)
@@ -223,19 +222,18 @@ def main():
     canvas.bind('<Enter>', bind_mousewheel)
     canvas.bind('<Leave>', unbind_mousewheel)
 
-    # Inputy (prawo)
     input_frame = tk.Frame(main_container)
     input_frame.pack(side="right", fill="y", padx=20)
 
-    # === Załaduj produkty początkowo ===
+    
     load_products(products_scrollable_frame, canvas)
 
-    # === Nagłówek: Zarządzanie Produktami ===
+    
     tk.Label(input_frame, text="Zarządzanie Produktami", font=("Arial", 14, "bold")).grid(
         row=0, column=0, columnspan=2, pady=(10, 10)
     )
 
-    # Dodawanie produktu
+
     tk.Label(input_frame, text="Nazwa produktu:").grid(row=1, column=0, padx=5, pady=5, sticky="w")
     name_entry = tk.Entry(input_frame, validate='key', validatecommand=vcmd)
     name_entry.grid(row=1, column=1, padx=5, pady=5)
@@ -244,8 +242,13 @@ def main():
     count_entry = tk.Entry(input_frame, validate='key', validatecommand=vcmd)
     count_entry.grid(row=2, column=1, padx=5, pady=5)
 
+    
+    tk.Label(input_frame, text="Cena (XX.XX):").grid(row=3, column=0, padx=5, pady=5, sticky="w")
+    price_entry = tk.Entry(input_frame)
+    price_entry.grid(row=3, column=1, padx=5, pady=5)
+
     def on_add_product():
-        add_product(name_entry, count_entry)
+        add_product(name_entry, count_entry, price_entry)
         load_products(products_scrollable_frame, canvas)
 
     tk.Button(
@@ -255,12 +258,12 @@ def main():
         bg="#2196F3",
         fg="white",
         padx=10
-    ).grid(row=3, column=0, columnspan=2, pady=10)
+    ).grid(row=4, column=0, columnspan=2, pady=10)
 
-    # Usuwanie produktu
-    tk.Label(input_frame, text="Nazwa do usunięcia:").grid(row=4, column=0, padx=5, pady=5, sticky="w")
+    
+    tk.Label(input_frame, text="Nazwa do usunięcia:").grid(row=5, column=0, padx=5, pady=5, sticky="w")
     delete_entry = tk.Entry(input_frame, validate='key', validatecommand=vcmd)
-    delete_entry.grid(row=4, column=1, padx=5, pady=5)
+    delete_entry.grid(row=5, column=1, padx=5, pady=5)
 
     def on_delete_product():
         delete_product(delete_entry)
@@ -273,29 +276,29 @@ def main():
         bg="#F44336",
         fg="white",
         padx=10
-    ).grid(row=5, column=0, columnspan=2, pady=10)
+    ).grid(row=6, column=0, columnspan=2, pady=10)
 
-    # === Nagłówek: Zarządzanie Użytkownikami ===
+   
     tk.Label(input_frame, text="Zarządzanie Użytkownikami", font=("Arial", 14, "bold")).grid(
-        row=6, column=0, columnspan=2, pady=(20, 10)
+        row=7, column=0, columnspan=2, pady=(20, 10)
     )
 
-    # Dodawanie użytkownika
-    tk.Label(input_frame, text="Email:").grid(row=7, column=0, padx=5, pady=5, sticky="w")
+
+    tk.Label(input_frame, text="Email:").grid(row=8, column=0, padx=5, pady=5, sticky="w")
     email_entry = tk.Entry(input_frame, validate='key', validatecommand=vcmd)
-    email_entry.grid(row=7, column=1, padx=5, pady=5)
+    email_entry.grid(row=8, column=1, padx=5, pady=5)
 
-    tk.Label(input_frame, text="Hasło:").grid(row=8, column=0, padx=5, pady=5, sticky="w")
+    tk.Label(input_frame, text="Hasło:").grid(row=9, column=0, padx=5, pady=5, sticky="w")
     password_entry = tk.Entry(input_frame, validate='key', validatecommand=vcmd, show="*")
-    password_entry.grid(row=8, column=1, padx=5, pady=5)
+    password_entry.grid(row=9, column=1, padx=5, pady=5)
 
-    tk.Label(input_frame, text="Imię:").grid(row=9, column=0, padx=5, pady=5, sticky="w")
+    tk.Label(input_frame, text="Imię:").grid(row=10, column=0, padx=5, pady=5, sticky="w")
     name_entry_2 = tk.Entry(input_frame, validate='key', validatecommand=vcmd)
-    name_entry_2.grid(row=9, column=1, padx=5, pady=5)
+    name_entry_2.grid(row=10, column=1, padx=5, pady=5)
 
-    tk.Label(input_frame, text="Telefon:").grid(row=10, column=0, padx=5, pady=5, sticky="w")
+    tk.Label(input_frame, text="Telefon:").grid(row=11, column=0, padx=5, pady=5, sticky="w")
     phone_entry = tk.Entry(input_frame, validate='key', validatecommand=vcmd)
-    phone_entry.grid(row=10, column=1, padx=5, pady=5)
+    phone_entry.grid(row=11, column=1, padx=5, pady=5)
 
     tk.Button(
         input_frame,
@@ -304,9 +307,9 @@ def main():
         bg="#1976D2",
         fg="white",
         padx=10
-    ).grid(row=11, column=0, columnspan=2, pady=10)
+    ).grid(row=12, column=0, columnspan=2, pady=10)
 
-    # Nowy przycisk "Pokaż Użytkowników"
+    
     tk.Button(
         input_frame,
         text="Pokaż Użytkowników",
@@ -314,12 +317,12 @@ def main():
         bg="#4CAF50",
         fg="white",
         padx=10
-    ).grid(row=12, column=0, columnspan=2, pady=5)
+    ).grid(row=13, column=0, columnspan=2, pady=5)
 
-    # Usuwanie użytkownika
-    tk.Label(input_frame, text="Email do usunięcia:").grid(row=13, column=0, padx=5, pady=5, sticky="w")
+
+    tk.Label(input_frame, text="Email do usunięcia:").grid(row=14, column=0, padx=5, pady=5, sticky="w")
     delete_user_entry = tk.Entry(input_frame, validate='key', validatecommand=vcmd)
-    delete_user_entry.grid(row=13, column=1, padx=5, pady=5)
+    delete_user_entry.grid(row=14, column=1, padx=5, pady=5)
 
     tk.Button(
         input_frame,
@@ -328,7 +331,7 @@ def main():
         bg="#D32F2F",
         fg="white",
         padx=10
-    ).grid(row=14, column=0, columnspan=2, pady=10)
+    ).grid(row=15, column=0, columnspan=2, pady=10)
 
     root.mainloop()
 
