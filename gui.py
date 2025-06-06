@@ -114,6 +114,7 @@ def main_shop_window(user_name="Użytkowniku"):
     root.title("Sklep Żabka")
     root.geometry("1200x700") 
     
+    # Koszyk: {product_id: (product_name, quantity, unit_price)}
     cart = {}
     
     label = tk.Label(root, text=f"Witaj w sklepie Żabka, {user_name}!", font=("Arial", 16))
@@ -128,7 +129,7 @@ def main_shop_window(user_name="Użytkowniku"):
     products_label = tk.Label(left_frame, text="Produkty", font=("Arial", 14, "bold"))
     products_label.pack(pady=5)
     
-    right_frame = tk.Frame(main_frame, width=300, bg="#f0f0f0")
+    right_frame = tk.Frame(main_frame, width=350, bg="#f0f0f0")
     right_frame.pack(side="right", fill="y", padx=(5, 10))
     right_frame.pack_propagate(False)
     
@@ -137,6 +138,13 @@ def main_shop_window(user_name="Użytkowniku"):
     
     cart_content_frame = tk.Frame(right_frame, bg="#f0f0f0")
     cart_content_frame.pack(fill="both", expand=True, padx=10, pady=5)
+    
+    # Frame na sumę
+    total_frame = tk.Frame(right_frame, bg="#f0f0f0")
+    total_frame.pack(side="bottom", fill="x", padx=10, pady=10)
+    
+    total_label = tk.Label(total_frame, text="Suma: 0.00 zł", font=("Arial", 12, "bold"), bg="#f0f0f0")
+    total_label.pack()
     
     canvas = tk.Canvas(left_frame)
     scrollbar = tk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
@@ -153,7 +161,15 @@ def main_shop_window(user_name="Użytkowniku"):
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
     
+    def calculate_total():
+        """Oblicza całkowitą sumę koszyka"""
+        total = 0.0
+        for product_id, (product_name, quantity, unit_price) in cart.items():
+            total += quantity * unit_price
+        return total
+    
     def update_cart_display():
+        # Czyść zawartość koszyka
         for widget in cart_content_frame.winfo_children():
             widget.destroy()
         
@@ -162,13 +178,21 @@ def main_shop_window(user_name="Użytkowniku"):
                                  font=("Arial", 10), bg="#f0f0f0", fg="gray")
             empty_label.pack(pady=20)
         else:
-            for product_id, (product_name, quantity) in cart.items():
+            for product_id, (product_name, quantity, unit_price) in cart.items():
                 item_frame = tk.Frame(cart_content_frame, bg="#ffffff", relief=tk.RAISED, bd=1)
                 item_frame.pack(fill="x", pady=2, padx=5)
                 
-                item_label = tk.Label(item_frame, text=f"{product_name}\nIlość: {quantity}", 
+                # Oblicz cenę za pozycję
+                item_total = quantity * unit_price
+                
+                item_label = tk.Label(item_frame, 
+                                    text=f"{product_name}\nIlość: {quantity}\nCena jedn.: {unit_price:.2f} zł\nRazem: {item_total:.2f} zł", 
                                     font=("Arial", 9), bg="#ffffff", justify="left")
                 item_label.pack(pady=5, padx=5, anchor="w")
+        
+        # Aktualizuj sumę
+        total = calculate_total()
+        total_label.config(text=f"Suma: {total:.2f} zł")
     
     def validate_quantity(quantity_str):
         try:
@@ -179,7 +203,7 @@ def main_shop_window(user_name="Użytkowniku"):
         except ValueError:
             return False, "Podaj prawidłową liczbę!"
     
-    def buy_product(product_id, product_name, quantity_entry):
+    def buy_product(product_id, product_name, unit_price, quantity_entry):
         quantity_str = quantity_entry.get().strip()
         
         if not quantity_str:
@@ -194,77 +218,135 @@ def main_shop_window(user_name="Użytkowniku"):
         
         quantity = result
         
-        # Dodaj do koszyka
+        # Dodaj do koszyka (z ceną jednostkową)
         if product_id in cart:
             current_quantity = cart[product_id][1]
             new_quantity = current_quantity + quantity
-            cart[product_id] = (product_name, new_quantity)
+            cart[product_id] = (product_name, new_quantity, unit_price)
         else:
-            cart[product_id] = (product_name, quantity)
+            cart[product_id] = (product_name, quantity, unit_price)
                 
         # Aktualizuj wyświetlanie koszyka
         update_cart_display()
         
         messagebox.showinfo("Sukces", f"Dodano {quantity} szt. '{product_name}' do koszyka!")
     
+    def clear_cart():
+        """Funkcja czyszcząca koszyk"""
+        if cart:
+            result = messagebox.askyesno("Potwierdzenie", "Czy na pewno chcesz wyczyścić koszyk?")
+            if result:
+                cart.clear()
+                update_cart_display()
+                messagebox.showinfo("Informacja", "Koszyk został wyczyszczony!")
+        else:
+            messagebox.showinfo("Informacja", "Koszyk jest już pusty!")
+    
+    def create_product_widget(parent, product_id, product_name, price, available):
+        """Tworzy widget produktu"""
+        # Ramka dla jednego produktu
+        product_frame = tk.Frame(parent, bd=1, relief=tk.RAISED)
+        product_frame.pack(fill="x", padx=10, pady=5)
+        
+        # Informacje o produkcie
+        product_info = tk.Label(
+            product_frame, 
+            text=f"{product_name}\nCena: {price:.2f} zł\nDostępnych: {available} szt.",
+            font=("Arial", 11),
+            padx=10,
+            justify="left"
+        )
+        product_info.pack(side="left", pady=10)
+        
+        # Frame na kontrolki po prawej stronie
+        controls_frame = tk.Frame(product_frame)
+        controls_frame.pack(side="right", padx=10, pady=10)
+        
+        # Kontrolki ilości tylko jeśli produkt jest dostępny
+        if available > 0:
+            quantity_label = tk.Label(controls_frame, text="Ilość:", font=("Arial", 10))
+            quantity_label.pack(side="left", padx=(0, 5))
+            
+            quantity_entry = tk.Entry(controls_frame, width=5, font=("Arial", 10))
+            quantity_entry.pack(side="left", padx=(0, 10))
+            quantity_entry.insert(0, "1")  # Domyślna wartość
+
+            buy_button = tk.Button(
+                controls_frame, 
+                text="Dodaj do koszyka", 
+                command=lambda: buy_product(product_id, product_name, price, quantity_entry),
+                bg="#4CAF50",
+                fg="white",
+                font=("Arial", 10),
+                padx=15
+            )
+            buy_button.pack(side="left")
+        else:
+            # Jeśli produkt niedostępny
+            unavailable_label = tk.Label(controls_frame, text="Niedostępny", 
+                                       font=("Arial", 10), fg="red")
+            unavailable_label.pack(side="left")
+    
+    # Wczytywanie danych produktów
     file_path = os.path.join("data", "products.xlsx")
     
     try:
-        # Wczytanie danych z pliku Excel
-        df = pd.read_excel(file_path, header=None, skiprows=1)
+        df = pd.read_excel(file_path)
         
-        # Dodanie produktów do interfejsu
-        for index, row in df.iterrows():
-            # Rozdzielenie danych po przecinkach
-            data = str(row[0]).split(',')
-            if len(data) >= 3:  # Upewnienie się, że mamy przynajmniej ID, nazwę i ilość
-                product_id = data[0]
-                product_name = data[1]
-                product_available = data[2]
-                
-                # Ramka dla jednego produktu
-                product_frame = tk.Frame(scrollable_frame, bd=1, relief=tk.RAISED)
-                product_frame.pack(fill="x", padx=10, pady=5)
-                
-
-                product_label = tk.Label(
-                    product_frame, 
-                    text=f"{product_name} - Dostępnych: {product_available}",
-                    font=("Arial", 12),
-                    padx=10
-                )
-                product_label.pack(side="left", pady=10)
-                
-                # Frame na kontrolki po prawej stronie
-                controls_frame = tk.Frame(product_frame)
-                controls_frame.pack(side="right", padx=10, pady=10)
-                
-
-                quantity_label = tk.Label(controls_frame, text="Ilość:", font=("Arial", 10))
-                quantity_label.pack(side="left", padx=(0, 5))
-                
-                quantity_entry = tk.Entry(controls_frame, width=5, font=("Arial", 10))
-                quantity_entry.pack(side="left", padx=(0, 10))
-                quantity_entry.insert(0, "1")  # Domyślna wartość
-
-                buy_button = tk.Button(
-                    controls_frame, 
-                    text="Dodaj do koszyka", 
-                    command=lambda id=product_id, name=product_name, entry=quantity_entry: buy_product(id, name, entry),
-                    bg="#4CAF50",
-                    fg="white",
-                    font=("Arial", 10),
-                    padx=15
-                )
-                buy_button.pack(side="left")
+        # Sprawdź czy dane są w jednej kolumnie rozdzielone przecinkami
+        first_col_name = df.columns[0]
+        
+        # Jeśli nazwa pierwszej kolumny zawiera przecinki, to znaczy że dane są w jednej kolumnie
+        if ',' in first_col_name or len(df.columns) == 1:
+            # Parsuj dane rozdzielone przecinkami
+            for index, row in df.iterrows():
+                try:
+                    data_str = str(row[first_col_name])
+                    
+                    if ',' in data_str:
+                        data_parts = data_str.split(',')
+                        if len(data_parts) >= 4:
+                            product_id = data_parts[0].strip()
+                            product_name = data_parts[1].strip()
+                            try:
+                                price = float(data_parts[2].strip())
+                            except:
+                                price = 0.0
+                            try:
+                                available = int(data_parts[3].strip())
+                            except:
+                                available = 0
+                            
+                            create_product_widget(scrollable_frame, product_id, product_name, price, available)
+                        
+                except Exception as e:
+                    # Pomiń błędne wiersze bez wypisywania błędów
+                    continue
+        else:
+            # Standardowe kolumny
+            for index, row in df.iterrows():
+                try:
+                    product_id = str(row['ID'])
+                    product_name = str(row['PRODUCT'])
+                    price = float(row['PRICE'])
+                    available = int(row['NO_PACKAGES_AVAILABLE'])
+                    
+                    create_product_widget(scrollable_frame, product_id, product_name, price, available)
+                    
+                except Exception as e:
+                    continue
     
     except Exception as e:
         messagebox.showerror("Błąd", f"Wystąpił problem przy wczytywaniu pliku: {str(e)}")
-        print(f"Błąd: {str(e)}")
     
     # Frame na przyciski na dole
     button_frame = tk.Frame(root)
     button_frame.pack(pady=10)
+    
+    # Przycisk czyszczenia koszyka
+    clear_cart_button = tk.Button(button_frame, text="Wyczyść koszyk", command=clear_cart,
+                                 bg="#f44336", fg="white", font=("Arial", 10), padx=15)
+    clear_cart_button.pack(side="left", padx=5)
     
     def close_app():
         try:
@@ -275,7 +357,7 @@ def main_shop_window(user_name="Użytkowniku"):
             root.destroy()
     
     close_button = tk.Button(button_frame, text="Zamknij", command=close_app)
-    close_button.pack(padx=10)
+    close_button.pack(side="left", padx=5)
     
     update_cart_display()
     
