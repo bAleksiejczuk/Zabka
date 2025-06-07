@@ -54,13 +54,14 @@ def add_user(email_entry, password_entry, name_entry, phone_entry):
             "E-MAIL": email,
             "PASSWORD": password,
             "PHONE": phone,
+            "POINTS": "0",  
             "CREATED": now,
             "UPDATED": now,
         }
 
         # Dopisz do pliku CSV 
         with open(file_path, mode="a", newline='', encoding='utf-8') as file:
-            writer = csv.DictWriter(file, fieldnames=["ID", "NAME", "E-MAIL", "PASSWORD", "PHONE", "CREATED", "UPDATED"])
+            writer = csv.DictWriter(file, fieldnames=["ID", "NAME", "E-MAIL", "PASSWORD", "PHONE", "POINTS", "CREATED", "UPDATED"])
             writer.writerow(new_user)
 
         # Tworzenie pliku w folderze DATABASE
@@ -113,7 +114,7 @@ def delete_user(delete_entry):
 
     # Zapisz przefiltrowaną listę z powrotem do pliku 
     with open(file_path, mode="w", newline='', encoding='utf-8') as file:
-        writer = csv.DictWriter(file, fieldnames=["ID", "NAME", "E-MAIL", "PASSWORD", "PHONE", "CREATED", "UPDATED"])
+        writer = csv.DictWriter(file, fieldnames=["ID", "NAME", "E-MAIL", "PASSWORD", "PHONE", "POINTS", "CREATED", "UPDATED"])
         writer.writeheader()
         writer.writerows(filtered_rows)
 
@@ -126,12 +127,13 @@ def delete_user(delete_entry):
         with open(txt_file_path, "r", encoding="utf-8") as f:
             txt_content = f.read()
 
-    # DODANO PASSWORD DO ARCHIWIZACJI
+    
     archive_data = f"ID: {user_to_delete['ID']}\n" \
                    f"NAME: {user_to_delete['NAME']}\n" \
                    f"E-MAIL: {user_to_delete['E-MAIL']}\n" \
                    f"PASSWORD: {user_to_delete.get('PASSWORD', '[brak hasła]')}\n" \
                    f"PHONE: {user_to_delete['PHONE']}\n" \
+                   f"POINTS: {user_to_delete.get('POINTS', '0')}\n" \
                    f"CREATED: {user_to_delete['CREATED']}\n" \
                    f"UPDATED: {user_to_delete['UPDATED']}\n" \
                    f"PLIK: {txt_content if txt_content else '[brak zawartości]'}\n" \
