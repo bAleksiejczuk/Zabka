@@ -36,6 +36,12 @@ shop_messages = create_message_handler("Sklep")
 show_shop_error = shop_messages("error")
 show_shop_info = shop_messages("info")
 
+payment_messages = create_message_handler("Płatność")
+show_payment_info = payment_messages("info")
+show_payment_error = payment_messages("error")
+show_payment_warning = payment_messages("warning")
+ask_payment_question = payment_messages("question")
+
 def validate_login(email, password):
     """Funkcja sprawdzająca dane logowania w pliku customer.csv"""
     file_path = os.path.join("data", "customer.csv")
@@ -53,6 +59,66 @@ def validate_login(email, password):
     except Exception as e:
         show_login_error(f"Wystąpił problem przy sprawdzaniu danych: {str(e)}")
         return False, None
+
+def check_product_availability(cart):
+    """Sprawdza dostępność produktów w koszyku względem pliku xlsx"""
+    file_path = os.path.join("data", "products.xlsx")
+    
+    try:
+        df = pd.read_excel(file_path)
+        
+        # Słownik do przechowywania dostępnych ilości {product_id: available_quantity}
+        available_products = {}
+        
+        # Sprawdź czy dane są w jednej kolumnie rozdzielone przecinkami
+        first_col_name = df.columns[0]
+        
+        if ',' in first_col_name or len(df.columns) == 1:
+            # Parsuj dane rozdzielone przecinkami
+            for index, row in df.iterrows():
+                try:
+                    data_str = str(row[first_col_name])
+                    
+                    if ',' in data_str:
+                        data_parts = data_str.split(',')
+                        if len(data_parts) >= 4:
+                            product_id = data_parts[0].strip()
+                            try:
+                                available = int(data_parts[3].strip())
+                                available_products[product_id] = available
+                            except:
+                                available_products[product_id] = 0
+                        
+                except Exception as e:
+                    continue
+        else:
+            # Standardowe kolumny
+            for index, row in df.iterrows():
+                try:
+                    product_id = str(row['ID'])
+                    available = int(row['NO_PACKAGES_AVAILABLE'])
+                    available_products[product_id] = available
+                except Exception as e:
+                    continue
+        
+        # Sprawdź każdy produkt w koszyku
+        unavailable_products = []
+        
+        for product_id, (product_name, cart_quantity, unit_price) in cart.items():
+            available_quantity = available_products.get(product_id, 0)
+            
+            if cart_quantity > available_quantity:
+                unavailable_products.append({
+                    'name': product_name,
+                    'cart_quantity': cart_quantity,
+                    'available_quantity': available_quantity
+                })
+        
+        return unavailable_products
+        
+    except Exception as e:
+        show_shop_error(f"Wystąpił problem przy sprawdzaniu dostępności: {str(e)}")
+        return []
 
 def login_window(callback):
     login_root = tk.Tk()
@@ -140,6 +206,152 @@ def login_window(callback):
     
     login_root.mainloop()
 
+def payment_window(cart, user_name):
+    """Okno płatności z podsumowaniem zamówienia"""
+    payment_root = tk.Tk()
+    payment_root.title("Płatność - Sklep Żabka")
+    payment_root.geometry("600x700")
+    payment_root.resizable(False, False)
+    
+    # Centrowanie okna
+    payment_root.eval('tk::PlaceWindow . center')
+    
+    # Nagłówek
+    title_label = tk.Label(payment_root, text="Podsumowanie zamówienia", font=("Arial", 18, "bold"))
+    title_label.pack(pady=20)
+    
+    user_label = tk.Label(payment_root, text=f"Klient: {user_name}", font=("Arial", 12))
+    user_label.pack(pady=5)
+    
+    # Frame na listę produktów
+    products_frame = tk.LabelFrame(payment_root, text="Zamówione produkty", font=("Arial", 12, "bold"))
+    products_frame.pack(fill="both", expand=True, padx=20, pady=10)
+    
+    # Canvas i scrollbar dla listy produktów
+    canvas = tk.Canvas(products_frame)
+    scrollbar = tk.Scrollbar(products_frame, orient="vertical", command=canvas.yview)
+    scrollable_frame = tk.Frame(canvas)
+    
+    scrollable_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+    
+    canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+    
+    canvas.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+    scrollbar.pack(side="right", fill="y")
+    
+    # Wyświetl produkty z koszyka
+    total_amount = 0.0
+    for product_id, (product_name, quantity, unit_price) in cart.items():
+        item_total = quantity * unit_price
+        total_amount += item_total
+        
+        item_frame = tk.Frame(scrollable_frame, relief=tk.RAISED, bd=1, bg="#f9f9f9")
+        item_frame.pack(fill="x", padx=5, pady=2)
+        
+        item_info = tk.Label(
+            item_frame,
+            text=f"{product_name}\nIlość: {quantity} szt. × {unit_price:.2f} zł = {item_total:.2f} zł",
+            font=("Arial", 11),
+            bg="#f9f9f9",
+            justify="left",
+            padx=10,
+            pady=5
+        )
+        item_info.pack(anchor="w")
+    
+    # Frame na podsumowanie
+    summary_frame = tk.Frame(payment_root, bg="#e0e0e0")
+    summary_frame.pack(fill="x", padx=20, pady=10)
+    
+    total_label = tk.Label(
+        summary_frame,
+        text=f"SUMA CAŁKOWITA: {total_amount:.2f} zł",
+        font=("Arial", 16, "bold"),
+        bg="#e0e0e0"
+    )
+    total_label.pack(pady=10)
+    
+    # Frame na metody płatności
+    payment_method_frame = tk.LabelFrame(payment_root, text="Metoda płatności", font=("Arial", 12, "bold"))
+    payment_method_frame.pack(fill="x", padx=20, pady=10)
+    
+    payment_var = tk.StringVar(value="card")
+    
+    card_radio = tk.Radiobutton(payment_method_frame, text="Karta płatnicza", 
+                               variable=payment_var, value="card", font=("Arial", 11))
+    card_radio.pack(anchor="w", padx=10, pady=5)
+    
+    cash_radio = tk.Radiobutton(payment_method_frame, text="Gotówka", 
+                               variable=payment_var, value="cash", font=("Arial", 11))
+    cash_radio.pack(anchor="w", padx=10, pady=5)
+    
+    transfer_radio = tk.Radiobutton(payment_method_frame, text="Przelew bankowy", 
+                                   variable=payment_var, value="transfer", font=("Arial", 11))
+    transfer_radio.pack(anchor="w", padx=10, pady=5)
+    
+    def finalize_order():
+        """Finalizuje zamówienie"""
+        payment_method = payment_var.get()
+        method_names = {
+            "card": "Karta płatnicza",
+            "cash": "Gotówka", 
+            "transfer": "Przelew bankowy"
+        }
+        
+        result = ask_payment_question(
+            f"Czy chcesz sfinalizować zamówienie?\n\n"
+            f"Kwota: {total_amount:.2f} zł\n"
+            f"Metoda płatności: {method_names[payment_method]}"
+        )
+        
+        if result:
+            show_payment_info(
+                f"Zamówienie zostało złożone!\n\n"
+                f"Numer zamówienia: #{hash(str(cart)) % 10000:04d}\n"
+                f"Kwota: {total_amount:.2f} zł\n"
+                f"Metoda płatności: {method_names[payment_method]}\n\n"
+                f"Dziękujemy za zakupy!"
+            )
+            payment_root.destroy()
+    
+    def go_back():
+        """Powrót do sklepu bez finalizowania"""
+        payment_root.destroy()
+    
+    # Frame na przyciski
+    buttons_frame = tk.Frame(payment_root)
+    buttons_frame.pack(pady=20)
+    
+    finalize_button = tk.Button(
+        buttons_frame,
+        text="Finalizuj zamówienie",
+        command=finalize_order,
+        bg="#4CAF50",
+        fg="white",
+        font=("Arial", 12, "bold"),
+        padx=20,
+        pady=10
+    )
+    finalize_button.pack(side="left", padx=10)
+    
+    back_button = tk.Button(
+        buttons_frame,
+        text="Powrót do sklepu",
+        command=go_back,
+        bg="#2196F3",
+        fg="white",
+        font=("Arial", 12),
+        padx=20,
+        pady=10
+    )
+    back_button.pack(side="left", padx=10)
+    
+    payment_root.mainloop()
+
 def main_shop_window(user_name="Użytkowniku"):
     """Główne okno aplikacji sklepu"""
     root = tk.Tk()
@@ -173,10 +385,50 @@ def main_shop_window(user_name="Użytkowniku"):
     
     # Frame na sumę
     total_frame = tk.Frame(right_frame, bg="#f0f0f0")
-    total_frame.pack(side="bottom", fill="x", padx=10, pady=10)
+    total_frame.pack(side="bottom", fill="x", padx=10, pady=5)
     
     total_label = tk.Label(total_frame, text="Suma: 0.00 zł", font=("Arial", 12, "bold"), bg="#f0f0f0")
     total_label.pack()
+    
+    # Frame na przycisk płatności
+    payment_button_frame = tk.Frame(right_frame, bg="#f0f0f0")
+    payment_button_frame.pack(side="bottom", fill="x", padx=10, pady=5)
+    
+    def go_to_payment():
+        """Przejście do okna płatności z sprawdzeniem dostępności"""
+        if not cart:
+            show_cart_warning("Koszyk jest pusty! Dodaj produkty przed przejściem do płatności.")
+            return
+        
+        # Sprawdź dostępność produktów
+        unavailable_products = check_product_availability(cart)
+        
+        if unavailable_products:
+            # Stwórz szczegółowy komunikat o błędzie
+            error_message = "Błąd dostępności produktów:\n\n"
+            for product in unavailable_products:
+                error_message += f"• {product['name']}\n"
+                error_message += f"  W koszyku: {product['cart_quantity']} szt.\n"
+                error_message += f"  Dostępne: {product['available_quantity']} szt.\n\n"
+            
+            error_message += "Zmniejsz ilość produktów w koszyku lub usuń niedostępne produkty."
+            
+            show_cart_error(error_message)
+            return
+        
+        # Jeśli wszystko jest dostępne, przejdź do płatności
+        payment_window(cart.copy(), user_name)
+    
+    payment_button = tk.Button(
+        payment_button_frame,
+        text="Przejdź do płatności",
+        command=go_to_payment,
+        bg="#FF9800",
+        fg="white",
+        font=("Arial", 12, "bold"),
+        pady=8
+    )
+    payment_button.pack(fill="x")
     
     canvas = tk.Canvas(left_frame)
     scrollbar = tk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
@@ -209,6 +461,8 @@ def main_shop_window(user_name="Użytkowniku"):
             empty_label = tk.Label(cart_content_frame, text="Koszyk jest pusty", 
                                  font=("Arial", 10), bg="#f0f0f0", fg="gray")
             empty_label.pack(pady=20)
+            # Wyłącz przycisk płatności gdy koszyk pusty
+            payment_button.config(state="disabled")
         else:
             for product_id, (product_name, quantity, unit_price) in cart.items():
                 item_frame = tk.Frame(cart_content_frame, bg="#ffffff", relief=tk.RAISED, bd=1)
@@ -221,6 +475,9 @@ def main_shop_window(user_name="Użytkowniku"):
                                     text=f"{product_name}\nIlość: {quantity}\nCena jedn.: {unit_price:.2f} zł\nRazem: {item_total:.2f} zł", 
                                     font=("Arial", 9), bg="#ffffff", justify="left")
                 item_label.pack(pady=5, padx=5, anchor="w")
+            
+            # Włącz przycisk płatności gdy koszyk nie jest pusty
+            payment_button.config(state="normal")
         
         # Aktualizuj sumę
         total = calculate_total()
@@ -397,5 +654,3 @@ def main_shop_window(user_name="Użytkowniku"):
 
 def start_gui():
     login_window(main_shop_window)
-
-
