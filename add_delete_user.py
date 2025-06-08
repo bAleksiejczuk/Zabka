@@ -59,10 +59,13 @@ def add_user(email_entry, password_entry, name_entry, phone_entry):
             "UPDATED": now,
         }
 
-        # Dopisz do pliku CSV 
-        with open(file_path, mode="a", newline='', encoding='utf-8') as file:
+        # Dodaj nowego użytkownika do listy i przepisz cały plik
+        rows.append(new_user)
+        
+        with open(file_path, mode="w", newline='', encoding='utf-8') as file:
             writer = csv.DictWriter(file, fieldnames=["ID", "NAME", "E-MAIL", "PASSWORD", "PHONE", "POINTS", "CREATED", "UPDATED"])
-            writer.writerow(new_user)
+            writer.writeheader()
+            writer.writerows(rows)
 
         # Tworzenie pliku w folderze DATABASE
         database_dir = "DATABASE"
