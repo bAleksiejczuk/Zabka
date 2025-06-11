@@ -210,13 +210,10 @@ def payment_window(cart, user_name):
     """Okno płatności z podsumowaniem zamówienia"""
     payment_root = tk.Tk()
     payment_root.title("Płatność - Sklep Żabka")
-    payment_root.geometry("600x700")
-    payment_root.resizable(False, False)
+    payment_root.geometry("1000x800")
     
-    # Centrowanie okna
-    payment_root.eval('tk::PlaceWindow . center')
     
-    # Nagłówek
+   
     title_label = tk.Label(payment_root, text="Podsumowanie zamówienia", font=("Arial", 18, "bold"))
     title_label.pack(pady=20)
     
@@ -279,27 +276,71 @@ def payment_window(cart, user_name):
     payment_method_frame = tk.LabelFrame(payment_root, text="Metoda płatności", font=("Arial", 12, "bold"))
     payment_method_frame.pack(fill="x", padx=20, pady=10)
     
-    payment_var = tk.StringVar(value="card")
+    # Globalna zmienna dla metody płatności
+    selected_payment = {"method": "blik"}
     
-    card_radio = tk.Radiobutton(payment_method_frame, text="Karta płatnicza", 
-                               variable=payment_var, value="card", font=("Arial", 11))
-    card_radio.pack(anchor="w", padx=10, pady=5)
+    def select_blik():
+        selected_payment["method"] = "blik"
+        print("Wybrano BLIK")
     
-    cash_radio = tk.Radiobutton(payment_method_frame, text="Gotówka", 
-                               variable=payment_var, value="cash", font=("Arial", 11))
-    cash_radio.pack(anchor="w", padx=10, pady=5)
+    def select_cash_on_delivery():
+        selected_payment["method"] = "cash_on_delivery"
+        print("Wybrano płatność przy odbiorze")
     
-    transfer_radio = tk.Radiobutton(payment_method_frame, text="Przelew bankowy", 
-                                   variable=payment_var, value="transfer", font=("Arial", 11))
-    transfer_radio.pack(anchor="w", padx=10, pady=5)
+    # Radio buttony - najpierw tworzymy zmienną i ustawiamy wartość
+    payment_choice = tk.IntVar(value=1)  # Ustawiamy wartość od razu przy tworzeniu
+    
+    blik_radio = tk.Radiobutton(
+        payment_method_frame,
+        text="BLIK",
+        variable=payment_choice,
+        value=1,
+        command=select_blik,
+        font=("Arial", 11)
+    )
+    blik_radio.pack(anchor="w", padx=10, pady=5)
+    
+    cash_on_delivery_radio = tk.Radiobutton(
+        payment_method_frame,
+        text="Płatność przy odbiorze",
+        variable=payment_choice,
+        value=2,
+        command=select_cash_on_delivery,
+        font=("Arial", 11)
+    )
+    cash_on_delivery_radio.pack(anchor="w", padx=10, pady=5)
+    
+    # Wymuszenie prawidłowego zaznaczenia
+    blik_radio.select()  # Bezpośrednie zaznaczenie BLIK
+    # payment_root.after(10, lambda: blik_radio.invoke())  # Wywołanie po krótkiej chwili
     
     def finalize_order():
         """Finalizuje zamówienie"""
-        payment_method = payment_var.get()
+        
+        # Sprawdzenie dostępności produktów przed finalizacją
+        unavailable_products = check_product_availability(cart)
+        
+        if unavailable_products:
+            # Stwórz szczegółowy komunikat o błędzie
+            error_message = "Błąd dostępności produktów:\n\n"
+            for product in unavailable_products:
+                error_message += f"• {product['name']}\n"
+                error_message += f"  W koszyku: {product['cart_quantity']} szt.\n"
+                error_message += f"  Dostępne: {product['available_quantity']} szt.\n\n"
+            
+            error_message += "Zmniejsz ilość produktów w koszyku lub usuń niedostępne produkty."
+            
+            show_cart_error(error_message)
+            return
+        
+        # Jeśli wszystkie produkty są dostępne, kontynuuj finalizację
+        payment_method = selected_payment["method"]
+        
+        print(f"Finalizacja z metodą: {payment_method}")
+        
         method_names = {
-            "card": "Karta płatnicza",
-            "cash": "Gotówka", 
-            "transfer": "Przelew bankowy"
+            "blik": "BLIK",
+            "cash_on_delivery": "Płatność przy odbiorze"
         }
         
         result = ask_payment_question(
@@ -309,6 +350,56 @@ def payment_window(cart, user_name):
         )
         
         if result:
+            # Aktualizuj dostępność produktów w pliku
+            try:
+                file_path = os.path.join("data", "products.xlsx")
+                df = pd.read_excel(file_path)
+                
+                # Pobierz nazwę pierwszej kolumny
+                first_col_name = df.columns[0]
+                
+                # Aktualizuj dane w każdym wierszu
+                for index, row in df.iterrows():
+                    try:
+                        data_str = str(row[first_col_name])
+                        
+                        if ',' in data_str:
+                            data_parts = data_str.split(',')
+                            if len(data_parts) >= 4:
+                                product_id = data_parts[0].strip()
+                                
+                                # Sprawdź czy ten produkt jest w koszyku
+                                if product_id in cart:
+                                    product_name, cart_quantity, unit_price = cart[product_id]
+                                    try:
+                                        current_available = int(data_parts[3].strip())
+                                        new_available = current_available - cart_quantity
+                                        
+                                        # Upewnij się, że nie zejdziemy poniżej 0
+                                        new_available = max(0, new_available)
+                                        
+                                        # Aktualizuj wiersz
+                                        data_parts[3] = str(new_available)
+                                        updated_data = ','.join(data_parts)
+                                        df.at[index, first_col_name] = updated_data
+                                        
+                                        print(f"Zaktualizowano produkt {product_id}: {current_available} -> {new_available}")
+                                        
+                                    except Exception as e:
+                                        print(f"Błąd przy aktualizacji produktu {product_id}: {e}")
+                                        continue
+                        
+                    except Exception as e:
+                        continue
+                
+                # Zapisz zaktualizowany plik
+                df.to_excel(file_path, index=False)
+                print("Dostępność produktów została zaktualizowana w pliku")
+                
+            except Exception as e:
+                print(f"Błąd przy aktualizacji pliku produktów: {e}")
+                show_payment_error(f"Zamówienie zostało złożone, ale wystąpił problem z aktualizacją dostępności produktów: {str(e)}")
+            
             show_payment_info(
                 f"Zamówienie zostało złożone!\n\n"
                 f"Numer zamówienia: #{hash(str(cart)) % 10000:04d}\n"
@@ -401,20 +492,20 @@ def main_shop_window(user_name="Użytkowniku"):
             return
         
         # Sprawdź dostępność produktów
-        unavailable_products = check_product_availability(cart)
+        # unavailable_products = check_product_availability(cart)
         
-        if unavailable_products:
-            # Stwórz szczegółowy komunikat o błędzie
-            error_message = "Błąd dostępności produktów:\n\n"
-            for product in unavailable_products:
-                error_message += f"• {product['name']}\n"
-                error_message += f"  W koszyku: {product['cart_quantity']} szt.\n"
-                error_message += f"  Dostępne: {product['available_quantity']} szt.\n\n"
+        # if unavailable_products:
+        #     # Stwórz szczegółowy komunikat o błędzie
+        #     error_message = "Błąd dostępności produktów:\n\n"
+        #     for product in unavailable_products:
+        #         error_message += f"• {product['name']}\n"
+        #         error_message += f"  W koszyku: {product['cart_quantity']} szt.\n"
+        #         error_message += f"  Dostępne: {product['available_quantity']} szt.\n\n"
             
-            error_message += "Zmniejsz ilość produktów w koszyku lub usuń niedostępne produkty."
+        #     error_message += "Zmniejsz ilość produktów w koszyku lub usuń niedostępne produkty."
             
-            show_cart_error(error_message)
-            return
+        #     show_cart_error(error_message)
+        #     return
         
         # Jeśli wszystko jest dostępne, przejdź do płatności
         payment_window(cart.copy(), user_name)
