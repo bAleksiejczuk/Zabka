@@ -3,6 +3,7 @@ from tkinter import messagebox
 import pandas as pd
 import csv
 import os
+from datetime import datetime
 
 # Funkcja wyższego rzędu do tworzenia message handlers
 def create_message_handler(default_title="Informacja"):
@@ -42,6 +43,9 @@ show_payment_error = payment_messages("error")
 show_payment_warning = payment_messages("warning")
 ask_payment_question = payment_messages("question")
 
+points_messages = create_message_handler("Sklep za punkty")
+show_points_error = points_messages("error")
+
 def validate_login(email, password):
     """Funkcja sprawdzająca dane logowania w pliku customer.csv"""
     file_path = os.path.join("data", "customer.csv")
@@ -51,14 +55,14 @@ def validate_login(email, password):
             csv_reader = csv.DictReader(file)
             for row in csv_reader:
                 if row['E-MAIL'] == email and row['PASSWORD'] == password:
-                    return True, row['NAME'] 
-        return False, None
+                    return True, row['NAME'], row['ID']  # Zwracaj NAME i ID
+        return False, None, None
     except FileNotFoundError:
         show_login_error("Plik z danymi klientów nie został znaleziony!")
-        return False, None
+        return False, None, None
     except Exception as e:
         show_login_error(f"Wystąpił problem przy sprawdzaniu danych: {str(e)}")
-        return False, None
+        return False, None, None
 
 def check_product_availability(cart):
     """Sprawdza dostępność produktów w koszyku względem pliku xlsx"""
@@ -70,36 +74,26 @@ def check_product_availability(cart):
         # Słownik do przechowywania dostępnych ilości {product_id: available_quantity}
         available_products = {}
         
-        # Sprawdź czy dane są w jednej kolumnie rozdzielone przecinkami
+        # Pobierz nazwę pierwszej kolumny
         first_col_name = df.columns[0]
         
-        if ',' in first_col_name or len(df.columns) == 1:
-            # Parsuj dane rozdzielone przecinkami
-            for index, row in df.iterrows():
-                try:
-                    data_str = str(row[first_col_name])
+        # Parsuj dane rozdzielone przecinkami
+        for index, row in df.iterrows():
+            try:
+                data_str = str(row[first_col_name])
+                
+                if ',' in data_str:
+                    data_parts = data_str.split(',')
+                    if len(data_parts) >= 4:
+                        product_id = data_parts[0].strip()
+                        try:
+                            available = int(data_parts[3].strip())
+                            available_products[product_id] = available
+                        except:
+                            available_products[product_id] = 0
                     
-                    if ',' in data_str:
-                        data_parts = data_str.split(',')
-                        if len(data_parts) >= 4:
-                            product_id = data_parts[0].strip()
-                            try:
-                                available = int(data_parts[3].strip())
-                                available_products[product_id] = available
-                            except:
-                                available_products[product_id] = 0
-                        
-                except Exception as e:
-                    continue
-        else:
-            # Standardowe kolumny
-            for index, row in df.iterrows():
-                try:
-                    product_id = str(row['ID'])
-                    available = int(row['NO_PACKAGES_AVAILABLE'])
-                    available_products[product_id] = available
-                except Exception as e:
-                    continue
+            except Exception as e:
+                continue
         
         # Sprawdź każdy produkt w koszyku
         unavailable_products = []
@@ -119,6 +113,62 @@ def check_product_availability(cart):
     except Exception as e:
         show_shop_error(f"Wystąpił problem przy sprawdzaniu dostępności: {str(e)}")
         return []
+
+def get_user_points(user_id):
+    """Pobiera punkty użytkownika z pliku customer.csv"""
+    file_path = os.path.join("data", "customer.csv")
+    
+    try:
+        customers_df = pd.read_csv(file_path)
+        user_row = customers_df[customers_df['ID'] == int(user_id)]
+        
+        if not user_row.empty:
+            return int(user_row.iloc[0]['POINTS'])
+        else:
+            return 0
+    except Exception as e:
+        print(f"Błąd przy pobieraniu punktów: {e}")
+        return 0
+
+def points_shop_window(user_name, user_id):
+    """Okno sklepu za punkty"""
+    points_root = tk.Tk()
+    points_root.title("Sklep za punkty - Żabka")
+    points_root.geometry("600x400")
+    
+    # Centrowanie okna
+    points_root.eval('tk::PlaceWindow . center')
+    
+    # Tytuł
+    title_label = tk.Label(points_root, text="Sklep za punkty", font=("Arial", 20, "bold"))
+    title_label.pack(pady=30)
+    
+    # Pobierz i wyświetl punkty użytkownika
+    user_points = get_user_points(user_id)
+    
+    points_label = tk.Label(
+        points_root, 
+        text=f"Twoje punkty: {user_points} pkt", 
+        font=("Arial", 16),
+        fg="#4CAF50"
+    )
+    points_label.pack(pady=20)
+    
+    # Przycisk zamknij
+    def close_points_shop():
+        points_root.destroy()
+    
+    close_button = tk.Button(
+        points_root,
+        text="Zamknij",
+        command=close_points_shop,
+        font=("Arial", 12),
+        padx=20,
+        pady=5
+    )
+    close_button.pack(pady=30)
+    
+    points_root.mainloop()
 
 def login_window(callback):
     login_root = tk.Tk()
@@ -162,12 +212,12 @@ def login_window(callback):
             show_login_warning("Wprowadź email i hasło!")
             return
         
-        is_valid, user_name = validate_login(email, password)
+        is_valid, user_name, user_id = validate_login(email, password)  # Pobierz też ID
         
         if is_valid:
             show_login_success(f"Witaj {user_name}!")
             login_root.destroy()  
-            callback(user_name)  
+            callback(user_name, user_id)  # Przekaż zarówno NAME jak i ID
         else:
             show_login_error("Nieprawidłowy email lub hasło!")
             password_entry.delete(0, tk.END)  
@@ -206,14 +256,12 @@ def login_window(callback):
     
     login_root.mainloop()
 
-def payment_window(cart, user_name):
+def payment_window(cart, user_name, user_id, refresh_callback=None):
     """Okno płatności z podsumowaniem zamówienia"""
     payment_root = tk.Tk()
     payment_root.title("Płatność - Sklep Żabka")
     payment_root.geometry("1000x800")
     
-    
-   
     title_label = tk.Label(payment_root, text="Podsumowanie zamówienia", font=("Arial", 18, "bold"))
     title_label.pack(pady=20)
     
@@ -287,8 +335,8 @@ def payment_window(cart, user_name):
         selected_payment["method"] = "cash_on_delivery"
         print("Wybrano płatność przy odbiorze")
     
-    # Radio buttony - najpierw tworzymy zmienną i ustawiamy wartość
-    payment_choice = tk.IntVar(value=1)  # Ustawiamy wartość od razu przy tworzeniu
+    # Radio buttony
+    payment_choice = tk.IntVar(value=1)
     
     blik_radio = tk.Radiobutton(
         payment_method_frame,
@@ -310,12 +358,28 @@ def payment_window(cart, user_name):
     )
     cash_on_delivery_radio.pack(anchor="w", padx=10, pady=5)
     
-    # Wymuszenie prawidłowego zaznaczenia
-    blik_radio.select()  # Bezpośrednie zaznaczenie BLIK
-    # payment_root.after(10, lambda: blik_radio.invoke())  # Wywołanie po krótkiej chwili
+    blik_radio.select()
+    
+    # Frame na adres dostawy
+    address_frame = tk.LabelFrame(payment_root, text="Adres dostawy", font=("Arial", 12, "bold"))
+    address_frame.pack(fill="x", padx=20, pady=10)
+    
+    address_label = tk.Label(address_frame, text="Adres dostawy:", font=("Arial", 11))
+    address_label.pack(anchor="w", padx=10, pady=(10,5))
+    
+    address_entry = tk.Entry(address_frame, font=("Arial", 11), width=70)
+    address_entry.pack(padx=10, pady=(0,10), fill="x")
     
     def finalize_order():
         """Finalizuje zamówienie"""
+        
+        # Pobierz adres z pola Entry
+        delivery_address = address_entry.get().strip()
+        
+        # Sprawdź czy adres został wprowadzony
+        if not delivery_address:
+            show_cart_error("Proszę wprowadzić adres dostawy.")
+            return
         
         # Sprawdzenie dostępności produktów przed finalizacją
         unavailable_products = check_product_availability(cart)
@@ -336,7 +400,12 @@ def payment_window(cart, user_name):
         # Jeśli wszystkie produkty są dostępne, kontynuuj finalizację
         payment_method = selected_payment["method"]
         
+        # Oblicz punkty - za każdą pełną złotówkę 1 punkt
+        earned_points = int(total_amount)
+        
         print(f"Finalizacja z metodą: {payment_method}")
+        print(f"Adres dostawy: {delivery_address}")
+        print(f"Zdobyte punkty: {earned_points}")
         
         method_names = {
             "blik": "BLIK",
@@ -346,7 +415,9 @@ def payment_window(cart, user_name):
         result = ask_payment_question(
             f"Czy chcesz sfinalizować zamówienie?\n\n"
             f"Kwota: {total_amount:.2f} zł\n"
-            f"Metoda płatności: {method_names[payment_method]}"
+            f"Metoda płatności: {method_names[payment_method]}\n"
+            f"Adres dostawy: {delivery_address}\n"
+            f"Zdobędziesz punktów: {earned_points}"
         )
         
         if result:
@@ -400,13 +471,107 @@ def payment_window(cart, user_name):
                 print(f"Błąd przy aktualizacji pliku produktów: {e}")
                 show_payment_error(f"Zamówienie zostało złożone, ale wystąpił problem z aktualizacją dostępności produktów: {str(e)}")
             
-            show_payment_info(
+            # Dodaj punkty do bazy klientów
+            try:
+                
+                customers_file = os.path.join("data", "customer.csv")
+                
+                # Wczytaj plik z klientami
+                customers_df = pd.read_csv(customers_file)
+                
+                # Znajdź użytkownika po ID - używaj user_id zamiast user_name
+                user_row = customers_df[customers_df['ID'] == int(user_id)]
+                
+                if not user_row.empty:
+                    # Użytkownik znaleziony - dodaj punkty
+                    user_index = user_row.index[0]
+                    current_points = int(customers_df.at[user_index, 'POINTS'])
+                    new_points = current_points + earned_points
+                    
+                    # Aktualizuj punkty i datę
+                    customers_df.at[user_index, 'POINTS'] = new_points
+                    customers_df.at[user_index, 'UPDATED'] = datetime.now().strftime('%Y-%m-%d')
+                    
+                    # Zapisz plik
+                    customers_df.to_csv(customers_file, index=False)
+                    
+                    print(f"Zaktualizowano punkty użytkownika {user_name} (ID: {user_id}): {current_points} -> {new_points}")
+                    
+                    points_info = f"Twoje punkty: {current_points} + {earned_points} = {new_points} pkt"
+                else:
+                    print(f"Nie znaleziono użytkownika o ID {user_id} w bazie klientów")
+                    points_info = f"Zdobyte punkty: {earned_points} pkt"
+                
+            except Exception as e:
+                print(f"Błąd przy aktualizacji punktów: {e}")
+                points_info = f"Zdobyte punkty: {earned_points} pkt (błąd zapisu do bazy)"
+            
+            # Przygotuj treść do wyświetlenia i zapisania
+            current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            
+            # Utwórz szczegółową listę produktów w koszyku
+            cart_details = "ZAMÓWIONE PRODUKTY:\n"
+            cart_details += "-" * 50 + "\n"
+            
+            for product_id, (product_name, cart_quantity, unit_price) in cart.items():
+                item_total = cart_quantity * unit_price
+                cart_details += f"• {product_name}\n"
+                cart_details += f"  Ilość: {cart_quantity} szt.\n"
+                cart_details += f"  Cena za sztukę: {unit_price:.2f} zł\n"
+                cart_details += f"  Wartość: {item_total:.2f} zł\n"
+                cart_details += "-" * 24 + "\n"
+            
+            cart_details += f"SUMA CAŁKOWITA: {total_amount:.2f} zł\n"
+            cart_details += "-" * 24 + "\n\n"
+            
+            order_info = (
+                f"=== ZAMÓWIENIE z {current_time} ===\n"
                 f"Zamówienie zostało złożone!\n\n"
-                f"Numer zamówienia: #{hash(str(cart)) % 10000:04d}\n"
-                f"Kwota: {total_amount:.2f} zł\n"
-                f"Metoda płatności: {method_names[payment_method]}\n\n"
-                f"Dziękujemy za zakupy!"
+                f"{cart_details}"
+                f"SZCZEGÓŁY ZAMÓWIENIA:\n"
+                f"Kwota całkowita: {total_amount:.2f} zł\n"
+                f"Metoda płatności: {method_names[payment_method]}\n"
+                f"Adres dostawy: {delivery_address}\n\n"
+                f"🎉 PUNKTY LOJALNOŚCIOWE 🎉\n"
+                f"{points_info}\n"
+                f"==============================\n"
             )
+            
+            # Zapisz zamówienie do pliku użytkownika (dopisz)
+            try:
+                # Stwórz folder DATABASE jeśli nie istnieje
+                database_folder = "DATABASE"
+                if not os.path.exists(database_folder):
+                    os.makedirs(database_folder)
+                
+                # Ścieżka do pliku użytkownika
+                user_file_path = os.path.join(database_folder, f"{user_id}.txt")
+                
+                # Dopisz treść zamówienia do pliku
+                with open(user_file_path, 'a', encoding='utf-8') as file:
+                    file.write(order_info + "\n")
+                
+                print(f"Zamówienie dopisane do pliku: {user_file_path}")
+                
+            except Exception as e:
+                print(f"Błąd przy zapisywaniu zamówienia do pliku: {e}")
+            
+            # Wyświetl informację użytkownikowi (bez daty w wyświetlaniu)
+            display_info = (
+                f"Zamówienie zostało złożone!\n\n"
+                f"Kwota: {total_amount:.2f} zł\n"
+                f"Metoda płatności: {method_names[payment_method]}\n"
+                f"Adres dostawy: {delivery_address}\n\n"
+                f"🎉 PUNKTY LOJALNOŚCIOWE 🎉\n"
+                f"{points_info}\n"
+            )
+            
+            show_payment_info(display_info)
+            
+            # Odśwież panel produktów w głównym oknie
+            if refresh_callback:
+                refresh_callback()
+            
             payment_root.destroy()
     
     def go_back():
@@ -442,8 +607,8 @@ def payment_window(cart, user_name):
     back_button.pack(side="left", padx=10)
     
     payment_root.mainloop()
-
-def main_shop_window(user_name="Użytkowniku"):
+    
+def main_shop_window(user_name="Użytkowniku", user_id=None):
     """Główne okno aplikacji sklepu"""
     root = tk.Tk()
     root.title("Sklep Żabka")
@@ -485,42 +650,6 @@ def main_shop_window(user_name="Użytkowniku"):
     payment_button_frame = tk.Frame(right_frame, bg="#f0f0f0")
     payment_button_frame.pack(side="bottom", fill="x", padx=10, pady=5)
     
-    def go_to_payment():
-        """Przejście do okna płatności z sprawdzeniem dostępności"""
-        if not cart:
-            show_cart_warning("Koszyk jest pusty! Dodaj produkty przed przejściem do płatności.")
-            return
-        
-        # Sprawdź dostępność produktów
-        # unavailable_products = check_product_availability(cart)
-        
-        # if unavailable_products:
-        #     # Stwórz szczegółowy komunikat o błędzie
-        #     error_message = "Błąd dostępności produktów:\n\n"
-        #     for product in unavailable_products:
-        #         error_message += f"• {product['name']}\n"
-        #         error_message += f"  W koszyku: {product['cart_quantity']} szt.\n"
-        #         error_message += f"  Dostępne: {product['available_quantity']} szt.\n\n"
-            
-        #     error_message += "Zmniejsz ilość produktów w koszyku lub usuń niedostępne produkty."
-            
-        #     show_cart_error(error_message)
-        #     return
-        
-        # Jeśli wszystko jest dostępne, przejdź do płatności
-        payment_window(cart.copy(), user_name)
-    
-    payment_button = tk.Button(
-        payment_button_frame,
-        text="Przejdź do płatności",
-        command=go_to_payment,
-        bg="#FF9800",
-        fg="white",
-        font=("Arial", 12, "bold"),
-        pady=8
-    )
-    payment_button.pack(fill="x")
-    
     canvas = tk.Canvas(left_frame)
     scrollbar = tk.Scrollbar(left_frame, orient="vertical", command=canvas.yview)
     scrollable_frame = tk.Frame(canvas)
@@ -535,92 +664,6 @@ def main_shop_window(user_name="Użytkowniku"):
     
     canvas.pack(side="left", fill="both", expand=True)
     scrollbar.pack(side="right", fill="y")
-    
-    def calculate_total():
-        """Oblicza całkowitą sumę koszyka"""
-        total = 0.0
-        for product_id, (product_name, quantity, unit_price) in cart.items():
-            total += quantity * unit_price
-        return total
-    
-    def update_cart_display():
-        # Czyść zawartość koszyka
-        for widget in cart_content_frame.winfo_children():
-            widget.destroy()
-        
-        if not cart:
-            empty_label = tk.Label(cart_content_frame, text="Koszyk jest pusty", 
-                                 font=("Arial", 10), bg="#f0f0f0", fg="gray")
-            empty_label.pack(pady=20)
-            # Wyłącz przycisk płatności gdy koszyk pusty
-            payment_button.config(state="disabled")
-        else:
-            for product_id, (product_name, quantity, unit_price) in cart.items():
-                item_frame = tk.Frame(cart_content_frame, bg="#ffffff", relief=tk.RAISED, bd=1)
-                item_frame.pack(fill="x", pady=2, padx=5)
-                
-                # Oblicz cenę za pozycję
-                item_total = quantity * unit_price
-                
-                item_label = tk.Label(item_frame, 
-                                    text=f"{product_name}\nIlość: {quantity}\nCena jedn.: {unit_price:.2f} zł\nRazem: {item_total:.2f} zł", 
-                                    font=("Arial", 9), bg="#ffffff", justify="left")
-                item_label.pack(pady=5, padx=5, anchor="w")
-            
-            # Włącz przycisk płatności gdy koszyk nie jest pusty
-            payment_button.config(state="normal")
-        
-        # Aktualizuj sumę
-        total = calculate_total()
-        total_label.config(text=f"Suma: {total:.2f} zł")
-    
-    def validate_quantity(quantity_str):
-        try:
-            quantity = int(quantity_str)
-            if quantity < 1 or quantity > 99:
-                return False, "Ilość musi być między 1 a 99!"
-            return True, quantity
-        except ValueError:
-            return False, "Podaj prawidłową liczbę!"
-    
-    def buy_product(product_id, product_name, unit_price, quantity_entry):
-        quantity_str = quantity_entry.get().strip()
-        
-        if not quantity_str:
-            show_cart_warning("Podaj ilość produktu!")
-            return
-        
-        is_valid, result = validate_quantity(quantity_str)
-        
-        if not is_valid:
-            show_cart_error(result)
-            return
-        
-        quantity = result
-        
-        # Dodaj do koszyka (z ceną jednostkową)
-        if product_id in cart:
-            current_quantity = cart[product_id][1]
-            new_quantity = current_quantity + quantity
-            cart[product_id] = (product_name, new_quantity, unit_price)
-        else:
-            cart[product_id] = (product_name, quantity, unit_price)
-                
-        # Aktualizuj wyświetlanie koszyka
-        update_cart_display()
-        
-        show_cart_info(f"Dodano {quantity} szt. '{product_name}' do koszyka!")
-    
-    def clear_cart():
-        """Funkcja czyszcząca koszyk"""
-        if cart:
-            result = ask_cart_question("Czy na pewno chcesz wyczyścić koszyk?")
-            if result:
-                cart.clear()
-                update_cart_display()
-                show_cart_info("Koszyk został wyczyszczony!")
-        else:
-            show_cart_info("Koszyk jest już pusty!")
     
     def create_product_widget(parent, product_id, product_name, price, available):
         """Tworzy widget produktu"""
@@ -667,17 +710,18 @@ def main_shop_window(user_name="Użytkowniku"):
                                        font=("Arial", 10), fg="red")
             unavailable_label.pack(side="left")
     
-    # Wczytywanie danych produktów
-    file_path = os.path.join("data", "products.xlsx")
-    
-    try:
-        df = pd.read_excel(file_path)
+    def load_products():
+        """Wczytuje i wyświetla produkty"""
+        # Usuń wszystkie istniejące produkty
+        for widget in scrollable_frame.winfo_children():
+            widget.destroy()
         
-        # Sprawdź czy dane są w jednej kolumnie rozdzielone przecinkami
-        first_col_name = df.columns[0]
+        file_path = os.path.join("data", "products.xlsx")
         
-        # Jeśli nazwa pierwszej kolumny zawiera przecinki, to znaczy że dane są w jednej kolumnie
-        if ',' in first_col_name or len(df.columns) == 1:
+        try:
+            df = pd.read_excel(file_path)
+            first_col_name = df.columns[0]
+            
             # Parsuj dane rozdzielone przecinkami
             for index, row in df.iterrows():
                 try:
@@ -700,33 +744,136 @@ def main_shop_window(user_name="Użytkowniku"):
                             create_product_widget(scrollable_frame, product_id, product_name, price, available)
                         
                 except Exception as e:
-                    # Pomiń błędne wiersze bez wypisywania błędów
                     continue
-        else:
-            # Standardowe kolumny
-            for index, row in df.iterrows():
-                try:
-                    product_id = str(row['ID'])
-                    product_name = str(row['PRODUCT'])
-                    price = float(row['PRICE'])
-                    available = int(row['NO_PACKAGES_AVAILABLE'])
-                    
-                    create_product_widget(scrollable_frame, product_id, product_name, price, available)
-                    
-                except Exception as e:
-                    continue
+        
+        except Exception as e:
+            show_shop_error(f"Wystąpił problem przy wczytywaniu pliku: {str(e)}")
     
-    except Exception as e:
-        show_shop_error(f"Wystąpił problem przy wczytywaniu pliku: {str(e)}")
+    def refresh_products():
+        """Funkcja odświeżająca panel produktów"""
+        print("Odświeżanie panelu produktów...")
+        load_products()
+        # Wyczyść koszyk po zakupie
+        cart.clear()
+        update_cart_display()
+    
+    def go_to_payment():
+        """Przejście do okna płatności z sprawdzeniem dostępności"""
+        if not cart:
+            show_cart_warning("Koszyk jest pusty! Dodaj produkty przed przejściem do płatności.")
+            return
+        
+        # Przekaż user_id zamiast user_name
+        payment_window(cart.copy(), user_name, user_id, refresh_products)
+    
+    def open_points_shop():
+        """Otwiera okno sklepu za punkty"""
+        points_shop_window(user_name, user_id)
+    
+    payment_button = tk.Button(
+        payment_button_frame,
+        text="Przejdź do płatności",
+        command=go_to_payment,
+        bg="#FF9800",
+        fg="white",
+        font=("Arial", 12, "bold"),
+        pady=8
+    )
+    payment_button.pack(fill="x")
+    
+    def calculate_total():
+        """Oblicza całkowitą sumę koszyka"""
+        total = 0.0
+        for product_id, (product_name, quantity, unit_price) in cart.items():
+            total += quantity * unit_price
+        return total
+    
+    def update_cart_display():
+        # Czyść zawartość koszyka
+        for widget in cart_content_frame.winfo_children():
+            widget.destroy()
+        
+        if not cart:
+            empty_label = tk.Label(cart_content_frame, text="Koszyk jest pusty", 
+                                 font=("Arial", 10), bg="#f0f0f0", fg="gray")
+            empty_label.pack(pady=20)
+            payment_button.config(state="disabled")
+        else:
+            for product_id, (product_name, quantity, unit_price) in cart.items():
+                item_frame = tk.Frame(cart_content_frame, bg="#ffffff", relief=tk.RAISED, bd=1)
+                item_frame.pack(fill="x", pady=2, padx=5)
+                
+                item_total = quantity * unit_price
+                
+                item_label = tk.Label(item_frame, 
+                                    text=f"{product_name}\nIlość: {quantity}\nCena jedn.: {unit_price:.2f} zł\nRazem: {item_total:.2f} zł", 
+                                    font=("Arial", 9), bg="#ffffff", justify="left")
+                item_label.pack(pady=5, padx=5, anchor="w")
+            
+            payment_button.config(state="normal")
+        
+        total = calculate_total()
+        total_label.config(text=f"Suma: {total:.2f} zł")
+    
+    def validate_quantity(quantity_str):
+        try:
+            quantity = int(quantity_str)
+            if quantity < 1 or quantity > 99:
+                return False, "Ilość musi być między 1 a 99!"
+            return True, quantity
+        except ValueError:
+            return False, "Podaj prawidłową liczbę!"
+    
+    def buy_product(product_id, product_name, unit_price, quantity_entry):
+        quantity_str = quantity_entry.get().strip()
+        
+        if not quantity_str:
+            show_cart_warning("Podaj ilość produktu!")
+            return
+        
+        is_valid, result = validate_quantity(quantity_str)
+        
+        if not is_valid:
+            show_cart_error(result)
+            return
+        
+        quantity = result
+        
+        if product_id in cart:
+            current_quantity = cart[product_id][1]
+            new_quantity = current_quantity + quantity
+            cart[product_id] = (product_name, new_quantity, unit_price)
+        else:
+            cart[product_id] = (product_name, quantity, unit_price)
+                
+        update_cart_display()
+        show_cart_info(f"Dodano {quantity} szt. '{product_name}' do koszyka!")
+    
+    def clear_cart():
+        """Funkcja czyszcząca koszyk"""
+        if cart:
+            result = ask_cart_question("Czy na pewno chcesz wyczyścić koszyk?")
+            if result:
+                cart.clear()
+                update_cart_display()
+                show_cart_info("Koszyk został wyczyszczony!")
+        else:
+            show_cart_info("Koszyk jest już pusty!")
+    
+    # Wczytaj produkty przy starcie
+    load_products()
     
     # Frame na przyciski na dole
     button_frame = tk.Frame(root)
     button_frame.pack(pady=10)
     
-    # Przycisk czyszczenia koszyka
     clear_cart_button = tk.Button(button_frame, text="Wyczyść koszyk", command=clear_cart,
                                  bg="#f44336", fg="white", font=("Arial", 10), padx=15)
     clear_cart_button.pack(side="left", padx=5)
+    
+    points_shop_button = tk.Button(button_frame, text="Sklep za punkty", command=open_points_shop,
+                                  bg="#9C27B0", fg="white", font=("Arial", 10), padx=15)
+    points_shop_button.pack(side="left", padx=5)
     
     def close_app():
         try:
